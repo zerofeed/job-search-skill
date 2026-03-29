@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+.env
+job-search.yaml
+opportunities.md

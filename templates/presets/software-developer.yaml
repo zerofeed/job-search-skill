@@ -1,0 +1,53 @@
+# Preset: Software Developer
+# Optimized for individual contributor engineering roles
+
+version: 1
+
+profile:
+  title: "Software Developer"
+  skills: []                           # Fill in your tech stack
+  seniority: "mid"
+  location: ""                         # Fill in your region
+  remote_only: true
+  resume_path: ""
+
+language: "en"
+
+keywords:
+  en:
+    - "Software Engineer"
+    - "Backend Developer"
+    - "Frontend Developer"
+    - "Full Stack Developer"
+    - "Staff Engineer"
+    - "Senior Developer"
+    - "Platform Engineer"
+    - "DevOps Engineer"
+    - "Site Reliability Engineer"
+
+sources:
+  greenhouse: true
+  lever: true
+  remoteok: true
+  getonboard: true
+  himalayas: true
+  workingnomads: true
+  weworkremotely: true
+  linkedin:
+    enabled: false
+    cookie: ""
+
+watchlist: []
+
+scoring:
+  dimensions:
+    - { name: "Tech stack fit", weight: 35 }
+    - { name: "Seniority match", weight: 25 }
+    - { name: "Company stage fit", weight: 20 }
+    - { name: "Growth opportunity", weight: 20 }
+  thresholds:
+    apply: 70
+    evaluate: 50
+
+output:
+  file: "opportunities.md"

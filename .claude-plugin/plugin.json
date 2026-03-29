@@ -1,0 +1,22 @@
+{
+  "name": "job-search",
+  "version": "1.0.0",
+  "description": "Automated job search across LinkedIn, ATS APIs, and web boards with configurable match scoring. Works for any profession.",
+  "author": {
+    "name": "zerofeed",
+    "url": "https://github.com/zerofeed"
+  },
+  "homepage": "https://github.com/zerofeed/job-search-skill",
+  "repository": "https://github.com/zerofeed/job-search-skill",
+  "license": "MIT",
+  "keywords": [
+    "job-search",
+    "career",
+    "linkedin",
+    "greenhouse",
+    "lever",
+    "ats",
+    "scoring",
+    "skills"
+  ]
+}

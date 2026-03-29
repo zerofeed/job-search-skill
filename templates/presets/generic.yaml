@@ -1,0 +1,44 @@
+# Preset: Generic
+# Flexible starting point for any professional role
+
+version: 1
+
+profile:
+  title: ""                            # Fill in your target role
+  skills: []                           # Fill in your key skills
+  seniority: "mid"                     # junior | mid | senior | lead | executive
+  location: ""                         # Fill in your region
+  remote_only: true
+  resume_path: ""
+
+language: "en"
+
+keywords:
+  en: []                               # Fill in job title keywords to search for
+
+sources:
+  greenhouse: true
+  lever: true
+  remoteok: true
+  getonboard: true
+  himalayas: true
+  workingnomads: true
+  weworkremotely: true
+  linkedin:
+    enabled: false
+    cookie: ""
+
+watchlist: []
+
+scoring:
+  dimensions:
+    - { name: "Role fit", weight: 30 }
+    - { name: "Industry fit", weight: 25 }
+    - { name: "Company stage fit", weight: 25 }
+    - { name: "Location fit", weight: 20 }
+  thresholds:
+    apply: 70
+    evaluate: 50
+
+output:
+  file: "opportunities.md"

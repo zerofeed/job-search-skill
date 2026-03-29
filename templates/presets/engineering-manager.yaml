@@ -1,0 +1,59 @@
+# Preset: Engineering Manager
+# Optimized for engineering leadership roles
+
+version: 1
+
+profile:
+  title: "Engineering Manager"
+  skills: []                           # Fill in your tech stack
+  seniority: "lead"
+  location: ""                         # Fill in your region
+  remote_only: true
+  resume_path: ""
+
+language: "en"
+
+keywords:
+  en:
+    - "Engineering Manager"
+    - "Technical Lead"
+    - "Head of Engineering"
+    - "VP Engineering"
+    - "Engineering Director"
+    - "Development Manager"
+    - "Software Engineering Manager"
+    - "Director of Engineering"
+    - "Principal Engineer"
+  es:
+    - "Gerente de Ingeniería"
+    - "Líder Técnico"
+    - "Director de Ingeniería"
+    - "Jefe de Tecnología"
+    - "Gerente de Desarrollo"
+
+sources:
+  greenhouse: true
+  lever: true
+  remoteok: true
+  getonboard: true
+  himalayas: true
+  workingnomads: true
+  weworkremotely: true
+  linkedin:
+    enabled: false
+    cookie: ""
+
+watchlist: []
+
+scoring:
+  dimensions:
+    - { name: "Domain fit", weight: 25 }
+    - { name: "Tech stack fit", weight: 25 }
+    - { name: "Leadership fit", weight: 25 }
+    - { name: "Company stage fit", weight: 25 }
+  thresholds:
+    apply: 70
+    evaluate: 50
+
+output:
+  file: "opportunities.md"

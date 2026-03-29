@@ -1,0 +1,14 @@
+{
+  "name": "job-search",
+  "version": "1.0.0",
+  "description": "Automated job search across LinkedIn, ATS APIs, and web boards with configurable match scoring",
+  "author": "zerofeed",
+  "license": "MIT",
+  "skills": [
+    {
+      "name": "job-search",
+      "description": "Search for job opportunities across multiple sources, score matches against your profile, and track applications",
+      "path": "skills/job-search/SKILL.md"
+    }
+  ]
+}

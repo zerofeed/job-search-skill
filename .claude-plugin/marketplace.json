@@ -1,0 +1,36 @@
+{
+  "name": "job-search-skill",
+  "description": "Automated job search skill for Claude Code — searches LinkedIn, ATS APIs, and web boards with configurable match scoring",
+  "owner": {
+    "name": "zerofeed"
+  },
+  "metadata": {
+    "description": "Automated job search across multiple sources with match scoring"
+  },
+  "plugins": [
+    {
+      "name": "job-search",
+      "source": "./",
+      "description": "Search for job opportunities across LinkedIn, 7+ ATS APIs, and web boards. Configurable scoring dimensions, company watchlist, and multi-language support.",
+      "version": "1.0.0",
+      "author": {
+        "name": "zerofeed"
+      },
+      "homepage": "https://github.com/zerofeed/job-search-skill",
+      "repository": "https://github.com/zerofeed/job-search-skill",
+      "license": "MIT",
+      "keywords": [
+        "job-search",
+        "career",
+        "linkedin",
+        "greenhouse",
+        "lever",
+        "ats",
+        "scoring",
+        "skills"
+      ],
+      "category": "productivity",
+      "strict": false
+    }
+  ]
+}
