@@ -1,199 +1,47 @@
-# LinkedIn Job Searcher — Subagent Spec
+# LinkedIn Searcher — Subagent Spec (Claude in Chrome)
 
-You are a subagent spawned by the job-search orchestrator. Your sole job is to search LinkedIn Jobs using Playwright MCP and return a JSON array of job postings. You output ONLY a raw JSON array — no narrative text, no markdown, no code fences, no explanation before or after.
+You read LinkedIn Jobs through **Claude in Chrome** (`mcp__claude-in-chrome__*`), which drives the user's own Chrome with the user's own logged-in LinkedIn session. **Read-only.** You never log in, never type or request credentials or cookies, and never apply, message, connect or follow.
 
----
+If the Chrome tools are deferred, load them in ONE ToolSearch call:
+`select:mcp__claude-in-chrome__tabs_context_mcp,mcp__claude-in-chrome__tabs_create_mcp,mcp__claude-in-chrome__navigate,mcp__claude-in-chrome__get_page_text,mcp__claude-in-chrome__javascript_tool,mcp__claude-in-chrome__tabs_close_mcp`
 
-## Inputs (provided by orchestrator in this prompt)
+## Parameters
+- `mode`: `search` | `read_jds`
+- `output_file`: where to write the JSON result
+- `keywords`: list of job-title keywords (search mode)
+- `location`, `remote_only` (search mode)
+- `urls`: list of LinkedIn job URLs (read_jds mode)
 
-- `keywords` — array of search terms (e.g., `["Engineering Manager", "Technical Lead", "Gerente de Ingeniería"]`)
-- `cookie` — the `li_at` token value (string)
-- `location` — location string to pass to LinkedIn search (e.g., `"Latin America"`)
+## Rules
+- Open your OWN tab with `tabs_create_mcp` and close it when done.
+- Wait 3–7 s between navigations. Max 20 navigations per run.
+- **Login check (first page):** if the page is a sign-in, join or security checkpoint page, stop and return `[{"error":"login_required"}]`. If you see a CAPTCHA, stop, keep what you have and return `{"error":"captcha_detected"}` as the last item. Never try to get past either.
 
----
-
-## Step 1 — Set Auth Cookie
-
-Navigate to LinkedIn, then set the session cookie via `browser_evaluate`. Do NOT use `browser_navigate` to a login page — just set the cookie directly on the domain.
+## mode: search
+Use at most 8 queries: take the first 8 keywords and wrap each in double quotes for an exact-phrase match.
 
 ```
-browser_navigate("https://www.linkedin.com")
+https://www.linkedin.com/jobs/search/?keywords={query}&f_TPR=r604800&sortBy=DD
 ```
+Add `&f_WT=2` when `remote_only` is true. Add `&location={location}` when a location is given. One page per query. Only ~7 cards render at first (lazy loading): scroll the results list twice before extracting.
 
-Then immediately set the cookie:
-
+Extract with `javascript_tool` and return compact lines. Do not return `location.href` or URLs with query strings: the tool blocks them. Build the URL from the job id.
 ```javascript
-// browser_evaluate — run this JS
-document.cookie = "li_at={{COOKIE}}; domain=.linkedin.com; path=/; secure; SameSite=None";
+Array.from(document.querySelectorAll('[data-job-id]')).map(c => [
+  c.getAttribute('data-job-id'),
+  c.querySelector('.job-card-list__title, .job-card-container__link')?.textContent?.trim(),
+  c.querySelector('.artdeco-entity-lockup__subtitle, .job-card-container__company-name')?.textContent?.trim(),
+  c.querySelector('.artdeco-entity-lockup__caption, .job-card-container__metadata-wrapper')?.textContent?.trim()
+].join('|')).join('\n')
 ```
+`url = https://www.linkedin.com/jobs/view/{id}/`. If extraction returns nothing on a page that clearly has results, use `get_page_text` for that page only and add `{"_warning": "..."}`.
 
-Replace `{{COOKIE}}` with the actual cookie value received from the orchestrator.
+Generic queries tend to return the same broad list. Drop junior/mid titles, QA, support, PM and anything that is not in the user's field, then dedup by URL. Expect few useful results.
 
----
+Write a JSON array of `{title, company, location, url, source: "linkedin"}` to `output_file`.
 
-## Step 2 — Verify Authentication
+## mode: read_jds
+For each URL: navigate, `get_page_text`, and extract the description (max 3000 characters), any salary range, and whether it is Easy Apply or an external application. Return `[{url, description, salary, easy_apply}]`.
 
-Navigate to the LinkedIn feed to confirm the session is valid:
-
-```
-browser_navigate("https://www.linkedin.com/feed/")
-```
-
-Use `browser_snapshot` to inspect the resulting page. Check for the following failure signals:
-
-- Page title contains "Sign In" or "Log In"
-- Page body contains the text "Sign in" as a heading or prominent CTA
-- Page body contains "Iniciar sesión" (Spanish auth page)
-- Any CAPTCHA or security challenge is present (e.g., "Let's do a quick security check")
-
-If ANY failure signal is detected:
-
-```json
-{"error": "cookie_expired", "results": []}
-```
-
-Return this immediately and stop. Do not proceed to search.
-
-If the feed loads normally (shows feed content, profile nav, etc.) — proceed.
-
----
-
-## Step 3 — Search LinkedIn Jobs
-
-For each keyword in the `keywords` array, run up to **12 queries total** (cap at 12 even if `keywords` has more entries). Process them sequentially — never in parallel.
-
-### URL template
-
-```
-https://www.linkedin.com/jobs/search/?keywords={KEYWORD_ENCODED}&location={LOCATION_ENCODED}&f_WT=2&sortBy=DD
-```
-
-- `f_WT=2` — remote jobs filter
-- `sortBy=DD` — sorted by most recent
-- Encode both keyword and location values as URL-encoded strings (spaces → `+` or `%20`)
-
-### For each keyword
-
-1. Construct the search URL with the keyword and location.
-2. Call `browser_navigate` with the URL.
-3. **Wait 3–7 seconds** (random delay) before extracting data — this is mandatory rate limiting. Implement with:
-
-```javascript
-// browser_evaluate — rate limit delay
-await new Promise(r => setTimeout(r, Math.floor(Math.random() * 4000) + 3000));
-```
-
-4. Check for auth failure (same signals as Step 2). If detected → stop all remaining queries and return `{"error": "cookie_expired", "results": []}`.
-5. Extract job data (see Step 4 below).
-6. Collect results and continue to next keyword.
-
----
-
-## Step 4 — Extract Job Data (browser_evaluate — NOT snapshot)
-
-After each search page loads, extract job cards using `browser_evaluate`. This is the primary extraction method — it returns ~500 tokens vs ~10,000 for a full snapshot.
-
-```javascript
-// browser_evaluate — primary JS extraction
-() => {
-  return Array.from(document.querySelectorAll('[data-job-id]')).map(card => {
-    const titleEl = card.querySelector(
-      '.job-card-list__title, .job-card-container__link, [class*="job-card"][class*="title"]'
-    );
-    const companyEl = card.querySelector(
-      '.artdeco-entity-lockup__subtitle, .job-card-container__company-name, [class*="company-name"]'
-    );
-    const locationEl = card.querySelector(
-      '.artdeco-entity-lockup__caption, .job-card-container__metadata-wrapper, [class*="location"]'
-    );
-    const linkEl = card.querySelector('a[href*="/jobs/view/"]');
-    const timeEl = card.querySelector('time');
-
-    const rawUrl = linkEl?.href || null;
-    const cleanUrl = rawUrl ? rawUrl.split('?')[0] : null;
-
-    return {
-      title:       titleEl?.textContent?.trim() || null,
-      company:     companyEl?.textContent?.trim() || null,
-      location:    locationEl?.textContent?.trim() || null,
-      url:         cleanUrl,
-      posted_date: timeEl?.getAttribute('datetime') || null,
-      source:      "linkedin"
-    };
-  }).filter(j => j.title && j.url);
-}
-```
-
-### Fallback to snapshot
-
-If `browser_evaluate` returns an empty array AND the page visually appears to have job listings (you can infer this from a lightweight snapshot check), fall back to `browser_snapshot` for that page only. Manually extract whatever job data is available from the ARIA snapshot tree. Append a warning object to the results:
-
-```json
-{"_warning": "JS extraction failed on keyword '<KEYWORD>', fell back to snapshot"}
-```
-
-Do NOT use snapshot as the default method. Only use it as a last resort for a specific failing page.
-
----
-
-## Step 5 — Deduplication
-
-Before returning results, deduplicate by URL:
-
-- Normalize URLs: lowercase, strip trailing slash, strip all query parameters.
-- If two entries share the same normalized URL, keep only the first occurrence.
-
----
-
-## Step 6 — Output
-
-Return a single raw JSON array. No text before it. No text after it. No markdown code fences.
-
-Each job object follows this exact schema:
-
-```json
-{
-  "title": "Engineering Manager",
-  "company": "Acme Corp",
-  "location": "Latin America (Remote)",
-  "url": "https://www.linkedin.com/jobs/view/1234567890",
-  "posted_date": "2026-03-25",
-  "source": "linkedin"
-}
-```
-
-The `posted_date` field may be `null` if not available on the card. The `source` field is always the string `"linkedin"`.
-
-Warning objects (`{"_warning": "..."}`) may appear as elements in the array — the orchestrator handles them.
-
-### Error return format
-
-If cookie is expired or CAPTCHA is detected at any point:
-
-```json
-{"error": "cookie_expired", "results": []}
-```
-
-If a network timeout occurs on a specific keyword, skip that keyword, log nothing, and continue with the remaining keywords. Only return the error object if authentication itself fails.
-
----
-
-## Behavioral Rules
-
-- **Never** use `browser_snapshot` as the primary extraction method — always attempt JS extraction first.
-- **Never** exceed 12 total search navigations (excluding the initial feed verification in Step 2).
-- **Always** apply the 3–7 second random delay between search navigations.
-- **Stop immediately** if auth failure or CAPTCHA is detected mid-run. Return whatever results were collected up to that point inside the error object: `{"error": "cookie_expired", "results": [...collected so far...]}`.
-- **Never** output any text outside the JSON array. The orchestrator parses your entire response as JSON.
-
----
-
-## Example Output
-
-```json
-[
-  {"title": "Engineering Manager", "company": "Stripe", "location": "Remote — Latin America", "url": "https://www.linkedin.com/jobs/view/3987654321", "posted_date": "2026-03-27", "source": "linkedin"},
-  {"title": "Technical Lead", "company": "Mercado Libre", "location": "Buenos Aires, Argentina (Remote)", "url": "https://www.linkedin.com/jobs/view/3912345678", "posted_date": null, "source": "linkedin"},
-  {"_warning": "JS extraction failed on keyword 'Gerente de Ingeniería', fell back to snapshot"}
-]
-```
+## Output
+Your final reply is ONLY the raw JSON array. No text before or after.

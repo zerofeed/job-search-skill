@@ -4,12 +4,22 @@ Automated job search across LinkedIn, ATS APIs, and web boards with configurable
 
 ## Features
 
-- Searches 7+ job board APIs (Greenhouse, Lever, RemoteOK, GetOnBoard, Himalayas, WorkingNomads, WeWorkRemotely)
-- Optional LinkedIn search via Playwright (requires browser cookie)
-- Configurable scoring dimensions — auto-proposed based on your profile
+- Searches 8 sources (Greenhouse, Lever, Ashby, RemoteOK, GetOnBoard, Himalayas, WorkingNomads, WeWorkRemotely)
+- LinkedIn search through **Claude in Chrome** using your own logged-in session (no cookies stored)
+- Location and title filters, so results are roles you can actually be hired for
+- Optional salary floor, and a clear APPLY / EVALUATE / SKIP verdict with a reason
 - Company watchlist for direct ATS monitoring
-- Tracks opportunities with lifecycle management (Pending → Applied → Discarded → Closed)
+- Tracks opportunities in an interactive **artifact** (default) or a markdown file, your choice (`output.format`)
 - Multi-language support (English default, configurable)
+
+## Requirements
+
+- **[Claude in Chrome](docs/claude-in-chrome-setup.md) installed and connected.** Required for LinkedIn search and for reading job pages that need JavaScript or a login. Without it only `/job-search apis` works.
+- **LinkedIn already logged in** in that same Chrome profile before you run the skill. The skill never asks for your password or cookies and never logs in for you.
+- [Claude Code](https://claude.com/claude-code) CLI
+- Python 3.9+ (standard library only, no pip installs)
+
+Step-by-step install and troubleshooting: **[docs/claude-in-chrome-setup.md](docs/claude-in-chrome-setup.md)**.
 
 ## Quick Start
 
@@ -60,62 +70,58 @@ profile:
   seniority: "senior"
   location: "Latin America"
   remote_only: true
+  min_salary_usd_month: 6000          # optional hard floor
+  location_allow: ["latam", "latin america", "worldwide"]
+  location_block: ["united states", "europe", "india"]
 
 # Search keywords (multi-language)
 keywords:
   en: ["Engineering Manager", "Technical Lead"]
   es: ["Gerente de Ingeniería"]
+  exclude: ["frontend", "mobile", "qa"]
 
-# Scoring — auto-proposed, fully customizable
+# Output: artifact (default) or markdown
+output:
+  format: "artifact"
+
+# Scoring — the scorer returns APPLY / EVALUATE / SKIP with a reason
 scoring:
-  dimensions:
-    - { name: "Domain fit", weight: 25 }
-    - { name: "Tech stack fit", weight: 25 }
-    - { name: "Leadership fit", weight: 25 }
-    - { name: "Company stage fit", weight: 25 }
-  thresholds:
-    apply: 70
-    evaluate: 50
+  criteria: ["Domain fit", "Tech stack fit", "Leadership fit", "Company stage fit"]
 ```
 
-## LinkedIn Setup (Optional)
+## LinkedIn Setup
 
-LinkedIn search requires a browser cookie. To get it:
+LinkedIn is read through Claude in Chrome. Nothing is stored in your config.
 
-1. Open LinkedIn in your browser and log in
-2. Open DevTools (`F12` or `Cmd+Option+I`)
-3. Go to **Application** tab → **Cookies** → `linkedin.com`
-4. Find the cookie named `li_at`
-5. Copy the **Value** (starts with `AQEDA...`)
-6. Paste it in your `job-search.yaml`:
+1. Install and connect Claude in Chrome: [docs/claude-in-chrome-setup.md](docs/claude-in-chrome-setup.md)
+2. In that Chrome profile, log in to LinkedIn.
+3. Set `sources.linkedin.enabled: true` in `job-search.yaml` and run `/job-search`.
 
-```yaml
-sources:
-  linkedin:
-    enabled: true
-    cookie: "AQEDAQPk..."
-```
+If LinkedIn shows a login or checkpoint page the skill stops and tells you; log in in Chrome and run it again. The skill is read-only and will not apply, message or edit anything.
 
-> **Note:** This cookie expires periodically. If LinkedIn searches return 0 results, refresh the cookie using the steps above. The skill will warn you if the cookie is expired and continue with API sources only.
-
-The skill will automatically install the Playwright MCP server if needed.
-
-## Requirements
-
-- [Claude Code](https://claude.com/claude-code) CLI
-- Python 3.9+ (for the API fetcher script — uses standard library only, no pip installs)
-- Playwright MCP (auto-installed if LinkedIn is enabled)
+> **Upgrading from 1.0:** the `cookie` field and Playwright are gone. Delete any `li_at` value from `job-search.yaml`, and consider signing out of old LinkedIn sessions to invalidate it.
 
 ## How It Works
 
 1. **Discovery** — Fetches jobs from enabled sources using your keywords and watchlist
 2. **Dedup** — Removes duplicates across sources and against previously found opportunities
-3. **Score** — Evaluates each new opportunity against your profile on your configured dimensions
+3. **Verdict** — Checks location, salary and role first, then judges the rest on your criteria
 4. **Track** — Inserts results into your tracking file with lifecycle sections
 
 ## Output
 
-Results are written to `opportunities.md` (configurable) with these sections:
+Choose how results are tracked with `output.format` in `job-search.yaml`:
+
+| Format | What you get | Needs |
+|--------|--------------|-------|
+| `artifact` (default) | An interactive tracker page: filter chips (Active, Apply, Evaluate, In progress, Discarded), verdict and salary on each row, a status dropdown (New, Interested, Applied, Interviewing, Discarded) that saves as you change it, and your search profile on top. Private to you. | The `Artifact` and `ArtifactData` tools of claude.ai |
+| `markdown` | A tracking file (`output.file`, default `opportunities.md`) with PENDING / DISCARDED sections. | Nothing |
+
+If `artifact` is selected but the artifact tools are not available, the run uses `markdown` and tells you; your config is not changed. The artifact URL is kept in `.job-search/state.json` (git-ignored). The first run creates it from `templates/tracker-artifact.html`; later runs add new rows and never overwrite status changes you made.
+
+Scratch files (discoveries, watchlist) go in `.job-search/`.
+
+### Markdown layout
 
 | Section | Purpose |
 |---------|---------|
@@ -125,7 +131,7 @@ Results are written to `opportunities.md` (configurable) with these sections:
 | 💀 CLOSED | Positions that are no longer open |
 | WATCHLIST | Companies being monitored via ATS |
 
-The skill only writes to the PENDING and DISCARDED sections. You manually move entries between sections as you progress through your job search.
+Pending rows use `| Company | Role | Verdict | Salary | Date | Link | Notes |`. The WATCHLIST table header must be `| Company | Domain | Career Page | ATS | Slug | Last checked |`. The skill only writes to PENDING and DISCARDED; you move entries between sections yourself.
 
 ## License
 

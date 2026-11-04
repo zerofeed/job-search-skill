@@ -3,3 +3,4 @@ __pycache__/
 .env
 job-search.yaml
 opportunities.md
+.job-search/

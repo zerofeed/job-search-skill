@@ -1,0 +1,236 @@
+<title>Job Search Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one working list. Criteria strip on top, filter chips, then rows sorted by what needs action first. */
+:root{
+  --bg:#f5f6f8; --surface:#ffffff; --fg:#1a2230; --muted:#5d6878; --line:#dde1e8;
+  --accent:#17615f; --accent-ink:#ffffff;
+  --good:#1d7a46; --good-bg:#e4f3ea; --warn:#8a5a00; --warn-bg:#fbf0d4; --off:#5d6878; --off-bg:#e9ecf1;
+  --live:#2a4fa8; --live-bg:#e3eafa;
+  --sans:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#12171f; --surface:#1a212c; --fg:#e6e9ee; --muted:#9aa5b5; --line:#2b3442;
+  --accent:#5cc2bd; --accent-ink:#0b1a19;
+  --good:#6fd39a; --good-bg:#17301f; --warn:#e8bd5c; --warn-bg:#33290f; --off:#9aa5b5; --off-bg:#252d39;
+  --live:#8fb0ff; --live-bg:#1b2745; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12171f; --surface:#1a212c; --fg:#e6e9ee; --muted:#9aa5b5; --line:#2b3442;
+  --accent:#5cc2bd; --accent-ink:#0b1a19;
+  --good:#6fd39a; --good-bg:#17301f; --warn:#e8bd5c; --warn-bg:#33290f; --off:#9aa5b5; --off-bg:#252d39;
+  --live:#8fb0ff; --live-bg:#1b2745; color-scheme:dark}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--fg);font:15px/1.5 var(--sans);margin:0;padding-inline:16px;padding-block:24px 48px}
+.wrap{max-width:920px;margin:0 auto;display:flex;flex-direction:column;gap:20px}
+h1{font-size:22px;font-weight:600;margin:0;letter-spacing:-.01em;text-wrap:balance}
+.sub{color:var(--muted);margin:2px 0 0;font-size:13px}
+.target{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px 18px}
+.target div{min-width:0}
+.target dt{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.target dd{margin:0;font-size:14px}
+.target dd.mono{font-family:var(--mono)}
+.chips{display:flex;flex-wrap:wrap;gap:8px}
+.chip{font:inherit;font-size:13px;background:var(--surface);color:var(--fg);border:1px solid var(--line);border-radius:999px;padding:5px 12px;cursor:pointer}
+.chip[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+.chip:focus-visible,select:focus-visible,a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chip b{font-family:var(--mono);font-weight:500;margin-left:6px}
+.list{display:flex;flex-direction:column;gap:10px;margin:0;padding:0;list-style:none}
+.row{background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:12px 14px;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px 14px}
+.row.is-off{opacity:.6}
+.head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;min-width:0}
+.co{font-weight:600}
+.role{color:var(--fg);overflow-wrap:anywhere}
+.sal{font-family:var(--mono);font-size:13px;color:var(--muted)}
+.notes{grid-column:1/-1;margin:0;color:var(--muted);font-size:14px;overflow-wrap:anywhere}
+.side{display:flex;flex-direction:column;align-items:flex-end;gap:6px}
+.pill{font-size:11px;font-weight:600;letter-spacing:.05em;border-radius:4px;padding:2px 7px;white-space:nowrap}
+.v-APPLY{background:var(--good-bg);color:var(--good)}
+.v-EVALUATE{background:var(--warn-bg);color:var(--warn)}
+.v-SKIP{background:var(--off-bg);color:var(--off)}
+.s-live{background:var(--live-bg);color:var(--live)}
+.foot{grid-column:1/-1;display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px}
+select{font:inherit;font-size:13px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:5px;padding:4px 8px}
+a.go{color:var(--accent);font-size:13px;font-weight:500}
+.meta{font-size:12px;color:var(--muted);margin-left:auto;font-family:var(--mono)}
+.empty{background:var(--surface);border:1px dashed var(--line);border-radius:6px;padding:28px 18px;text-align:center;color:var(--muted)}
+.note{font-size:12px;color:var(--muted)}
+@media (max-width:520px){.row{grid-template-columns:1fr}.side{flex-direction:row;align-items:center}.meta{margin-left:0}}
+@media (prefers-reduced-motion:no-preference){.chip{transition:background .12s}}
+</style>
+
+<main class="wrap">
+  <header>
+    <h1>Job search</h1>
+    <p class="sub" id="sub">Loading…</p>
+  </header>
+
+  <dl class="target" id="profile" aria-label="Search profile" hidden></dl>
+
+  <div class="chips" id="chips" role="group" aria-label="Filter opportunities"></div>
+  <ul class="list" id="list"></ul>
+  <p class="note" id="foot"></p>
+</main>
+
+<script>
+(function(){
+  var STATUS = [
+    ["new","New"],["interested","Interested"],["applied","Applied"],
+    ["interviewing","Interviewing"],["discarded","Discarded"]
+  ];
+  var FILTERS = [
+    ["active","Active"],["apply","Apply"],["evaluate","Evaluate"],
+    ["progress","In progress"],["discarded","Discarded"],["all","All"]
+  ];
+  var state = { rows: [], filter: "active", ready: false, canWrite: true, db: null };
+  try { var saved = localStorage.getItem("jobsearch-filter"); if (saved) state.filter = saved; } catch(e){}
+
+  var $ = function(id){ return document.getElementById(id); };
+  var VERDICT_RANK = { APPLY:0, EVALUATE:1, SKIP:2 };
+
+  function isOff(r){ return r.status === "discarded" || r.verdict === "SKIP"; }
+  function inProcess(r){ return r.status === "applied" || r.status === "interviewing"; }
+  function matches(r, f){
+    if (f === "all") return true;
+    if (f === "discarded") return isOff(r);
+    if (f === "progress") return inProcess(r);
+    if (f === "apply") return r.verdict === "APPLY" && !isOff(r);
+    if (f === "evaluate") return r.verdict === "EVALUATE" && !isOff(r);
+    return !isOff(r);
+  }
+  function rank(r){
+    if (r.status === "interviewing") return 0;
+    if (r.status === "applied") return 1;
+    return 2 + (VERDICT_RANK[r.verdict] != null ? VERDICT_RANK[r.verdict] : 3);
+  }
+
+  function el(tag, cls, text){
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+  function safeUrl(u){
+    try { var x = new URL(String(u)); return (x.protocol === "https:" || x.protocol === "http:") ? x.href : null; }
+    catch(e){ return null; }
+  }
+
+  function renderChips(){
+    var box = $("chips"); box.textContent = "";
+    FILTERS.forEach(function(f){
+      var n = state.rows.filter(function(r){ return matches(r, f[0]); }).length;
+      var b = el("button", "chip"); b.type = "button";
+      b.setAttribute("aria-pressed", String(state.filter === f[0]));
+      b.appendChild(document.createTextNode(f[1]));
+      b.appendChild(el("b", null, String(n)));
+      b.addEventListener("click", function(){
+        state.filter = f[0];
+        try { localStorage.setItem("jobsearch-filter", f[0]); } catch(e){}
+        render();
+      });
+      box.appendChild(b);
+    });
+  }
+
+  function setStatus(r, value){
+    if (!state.db) return;
+    state.db.doc("opportunities/" + r.id).update({ status: value, updatedAt: new Date().toISOString() })
+      .catch(function(){ $("foot").textContent = "Could not save the change. Try again."; });
+  }
+
+  function renderRow(r){
+    var li = el("li", "row" + (isOff(r) ? " is-off" : ""));
+    var head = el("div", "head");
+    head.appendChild(el("span", "co", r.company || "—"));
+    head.appendChild(el("span", "role", r.role || ""));
+    if (r.salary) head.appendChild(el("span", "sal", r.salary));
+    if (r.location) head.appendChild(el("span", "sal", "· " + r.location));
+    li.appendChild(head);
+
+    var side = el("div", "side");
+    if (inProcess(r)) side.appendChild(el("span", "pill s-live", r.status === "interviewing" ? "INTERVIEWING" : "APPLIED"));
+    side.appendChild(el("span", "pill v-" + (r.verdict || "SKIP"), r.verdict || "—"));
+    li.appendChild(side);
+
+    if (r.notes) li.appendChild(el("p", "notes", r.notes));
+
+    var foot = el("div", "foot");
+    var sel = el("select"); sel.id = "st-" + r.id;
+    sel.setAttribute("aria-label", "Status of " + (r.company || "") + " " + (r.role || ""));
+    STATUS.forEach(function(s){
+      var o = el("option", null, s[1]); o.value = s[0];
+      if ((r.status || "new") === s[0]) o.selected = true;
+      sel.appendChild(o);
+    });
+    sel.addEventListener("change", function(){ setStatus(r, sel.value); });
+    sel.disabled = !state.canWrite;
+    foot.appendChild(sel);
+    var href = safeUrl(r.url);
+    if (href){
+      var a = el("a", "go", "Open posting ↗"); a.href = href; a.target = "_blank"; a.rel = "noopener noreferrer";
+      foot.appendChild(a);
+    }
+    var meta = [];
+    if (r.source) meta.push(r.source);
+    if (r.foundAt) meta.push(String(r.foundAt).slice(0,10));
+    if (meta.length) foot.appendChild(el("span", "meta", meta.join(" · ")));
+    li.appendChild(foot);
+    return li;
+  }
+
+  function render(){
+    renderChips();
+    var list = $("list"); list.textContent = "";
+    var rows = state.rows.filter(function(r){ return matches(r, state.filter); })
+      .sort(function(a,b){ return rank(a) - rank(b) || String(a.company).localeCompare(String(b.company)); });
+
+    if (!state.ready){
+      list.appendChild(el("li", "empty", "Loading opportunities…"));
+    } else if (!state.db){
+      list.appendChild(el("li", "empty", "Sign in to claude.ai to view and edit opportunities."));
+    } else if (!state.rows.length){
+      list.appendChild(el("li", "empty", "No opportunities yet. Run /job-search and they will appear here."));
+    } else if (!rows.length){
+      list.appendChild(el("li", "empty", "Nothing in this filter."));
+    } else {
+      rows.forEach(function(r){ list.appendChild(renderRow(r)); });
+    }
+
+    var n = state.rows.length, act = state.rows.filter(function(r){ return matches(r,"active"); }).length;
+    $("sub").textContent = state.ready && state.db
+      ? act + " active of " + n + " tracked"
+      : "Opportunity pipeline";
+  }
+
+  render();
+
+  (window.claude && window.claude.use ? window.claude.use("db") : Promise.resolve(null)).then(function(db){
+    state.ready = true;
+    if (!db){ render(); return; }
+    state.db = db;
+    db.collection("opportunities").onSnapshot(function(snap){
+      state.rows = snap.docs.map(function(d){ var x = d.data() || {}; x.id = d.id; return x; });
+      render();
+    }, function(){
+      $("foot").textContent = "Could not read the list. Reload the page.";
+    });
+    db.doc("meta/profile").onSnapshot(function(p){
+      var box = $("profile"), d = p.exists ? p.data() : null;
+      box.textContent = "";
+      var pairs = d ? [["Role", d.role], ["Compensation", d.compensation], ["Location", d.location], ["Focus", d.focus]] : [];
+      pairs.forEach(function(kv){
+        if (!kv[1]) return;
+        var div = el("div"); div.appendChild(el("dt", null, kv[0]));
+        div.appendChild(el("dd", kv[0] === "Compensation" ? "mono" : null, String(kv[1])));
+        box.appendChild(div);
+      });
+      box.hidden = !box.children.length;
+    });
+    db.doc("meta/lastRun").onSnapshot(function(s){
+      var m = s.exists ? s.data() : null;
+      if (m && m.summary) $("foot").textContent = "Last run: " + m.summary;
+    });
+  });
+})();
+</script>

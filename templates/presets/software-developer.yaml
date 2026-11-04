@@ -9,6 +9,9 @@ profile:
   seniority: "mid"
   location: ""                         # Fill in your region
   remote_only: true
+  min_salary_usd_month: null          # Optional hard floor, USD per month (e.g. 6000). Jobs without a published salary are never dropped for this.
+  location_allow: []                   # Location terms you can work from, e.g. ["latam", "latin america", "brazil", "worldwide"]
+  location_block: []                   # Location terms to reject, e.g. ["united states", "europe", "india"]
   resume_path: ""
 
 language: "en"
@@ -25,9 +28,12 @@ keywords:
     - "DevOps Engineer"
     - "Site Reliability Engineer"
 
+  exclude: []                          # Title terms to drop even if a keyword matches, e.g. ["frontend", "mobile", "qa"]
+
 sources:
   greenhouse: true
   lever: true
+  ashby: true
   remoteok: true
   getonboard: true
   himalayas: true
@@ -35,19 +41,27 @@ sources:
   weworkremotely: true
   linkedin:
     enabled: false
-    cookie: ""
 
 watchlist: []
 
+# --- Scoring ---
+# The scorer judges each opportunity on these criteria and returns a verdict:
+#   APPLY    - meets the hard requirements (location, compensation, role) with no blocker
+#   EVALUATE - promising but something is unknown (e.g. salary not published)
+#   SKIP     - a hard requirement fails
 scoring:
-  dimensions:
-    - { name: "Tech stack fit", weight: 35 }
-    - { name: "Seniority match", weight: 25 }
-    - { name: "Company stage fit", weight: 20 }
-    - { name: "Growth opportunity", weight: 20 }
-  thresholds:
-    apply: 70
-    evaluate: 50
+  criteria:
+    - "Tech stack fit"
+    - "Seniority match"
+    - "Company stage fit"
+    - "Growth opportunity"
 
+# --- Output ---
+# format: artifact | markdown
+#   artifact: an interactive tracker page (a Claude artifact) with filters and a status dropdown. Needs the
+#             Artifact tools of claude.ai; if they are not available the run falls back to markdown.
+#   markdown: a plain tracking file in your working directory (file below).
 output:
-  file: "opportunities.md"
+  format: "artifact"
+  artifact_title: "Job Search Tracker"
+  file: "opportunities.md"    # used when format is markdown, and as the fallback

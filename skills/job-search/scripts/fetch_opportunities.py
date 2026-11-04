@@ -12,7 +12,7 @@ The orchestrator (SKILL.md) reads job-search.yaml and passes keywords as a
 comma-separated list. The watchlist is still read from the existing markdown
 output file (the WATCHLIST table), keeping the same format as the original.
 
-Output: JSON array of {title, company, location, url, posted_date, source}
+Output: JSON array of {title, company, location, url, posted_date, source[, salary]}
 Sidecar: <output-stem>_meta.json with stats and discovered slugs.
 """
 
@@ -35,6 +35,13 @@ from typing import NamedTuple
 
 USER_AGENT = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)"
 TIMEOUT = 10
+
+# Filters configured once in main() from CLI flags. Kept at module level so every
+# fetcher applies the same title and location rules without extra parameters.
+EXCLUDE_KEYWORDS: list[str] = []
+LOCATION_ALLOW: list[str] = []
+LOCATION_BLOCK: list[str] = []
+SEARCH_QUERIES: list[str] = []
 
 
 # ---------------------------------------------------------------------------
@@ -83,7 +90,27 @@ def parse_keywords(keywords_arg: str) -> list[str]:
 
 def matches_keywords(title: str, keywords: list[str]) -> bool:
     t = title.lower()
+    if any(ex in t for ex in EXCLUDE_KEYWORDS):
+        return False
     return any(kw in t for kw in keywords)
+
+
+def location_ok(location: str) -> bool:
+    """
+    Decide whether a job location is plausible for the candidate.
+
+    No filter is applied when LOCATION_ALLOW and LOCATION_BLOCK are both empty.
+    Otherwise: an allowed term wins, then a blocked term rejects, and anything
+    else is kept only if it is remote or has no location at all.
+    """
+    if not LOCATION_ALLOW and not LOCATION_BLOCK:
+        return True
+    loc = f" {location.lower()} "
+    if any(term in loc for term in LOCATION_ALLOW):
+        return True
+    if any(term in loc for term in LOCATION_BLOCK):
+        return False
+    return "remote" in loc or not location.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -201,6 +228,43 @@ def fetch_greenhouse(
 
 
 # ---------------------------------------------------------------------------
+# Ashby fetcher (public posting API)
+# ---------------------------------------------------------------------------
+
+def fetch_ashby(
+    entries: list[WatchlistEntry], keywords: list[str]
+) -> tuple[dict, list[dict]]:
+    slugs = [e for e in entries if e.ats == "ashby"]
+    stats: dict = {"slugs_attempted": len(slugs), "slugs_ok": 0, "slugs_failed": [], "jobs_found": 0}
+    opportunities: list[dict] = []
+
+    for entry in slugs:
+        url = f"https://api.ashbyhq.com/posting-api/job-board/{entry.slug}"
+        try:
+            data = fetch_json(url)
+            stats["slugs_ok"] += 1
+            for job in data.get("jobs", []):
+                title = job.get("title", "")
+                if not matches_keywords(title, keywords):
+                    continue
+                published = job.get("publishedAt") or ""
+                opportunities.append({
+                    "title": title,
+                    "company": entry.empresa,
+                    "location": job.get("location", "") or "",
+                    "url": job.get("jobUrl", ""),
+                    "posted_date": published.split("T")[0] if published else "",
+                    "source": "ashby",
+                })
+        except Exception as exc:
+            print(f"[warn] ashby slug={entry.slug}: {exc}", file=sys.stderr)
+            stats["slugs_failed"].append(entry.slug)
+
+    stats["jobs_found"] = len(opportunities)
+    return stats, opportunities
+
+
+# ---------------------------------------------------------------------------
 # Lever fetcher
 # ---------------------------------------------------------------------------
 
@@ -262,41 +326,58 @@ def fetch_lever(
 # GetOnBoard fetcher
 # ---------------------------------------------------------------------------
 
-def fetch_getonboard(keywords: list[str]) -> tuple[dict, list[dict]]:
-    """Fetch remote development jobs from GetOnBoard (paginated, up to 5 pages)."""
-    stats = {"pages_fetched": 0, "jobs_found": 0}
-    opportunities: list[dict] = []
+REMOTE_TERMS = {"remote", "worldwide", "anywhere", "global", "latam", "latin america",
+                "south america", "americas"}
 
-    for page in range(1, 6):
+
+def fetch_getonboard(keywords: list[str]) -> tuple[dict, list[dict]]:
+    """
+    Search GetOnBoard (LATAM-focused) with the configured search queries.
+
+    The old /api/v0/jobs listing endpoint now answers 401, so this uses the
+    public /api/v0/search/jobs endpoint instead.
+    """
+    stats = {"queries": 0, "jobs_found": 0}
+    opportunities: list[dict] = []
+    seen: set[str] = set()
+
+    for query in SEARCH_QUERIES:
         url = (
-            "https://www.getonbrd.com/api/v0/jobs"
-            f"?category=development&remote=true&per_page=50&page={page}"
+            "https://www.getonbrd.com/api/v0/search/jobs"
+            f"?query={urllib.parse.quote(query)}&per_page=30"
         )
         try:
             data = fetch_json(url)
-            items = data.get("data", [])
-            stats["pages_fetched"] += 1
-            if not items:
-                break
-            for item in items:
-                attrs = item.get("attributes", {})
-                title = attrs.get("title", "")
-                if not matches_keywords(title, keywords):
-                    continue
-                links = item.get("links", {})
-                pub = attrs.get("published_at", "")
-                posted_date = pub.split("T")[0] if pub else ""
-                opportunities.append({
-                    "title": title,
-                    "company": attrs.get("company_name", ""),
-                    "location": attrs.get("modality", ""),
-                    "url": links.get("public_url", ""),
-                    "posted_date": posted_date,
-                    "source": "getonboard",
-                })
+            stats["queries"] += 1
         except Exception as exc:
-            print(f"[warn] getonboard page {page}: {exc}", file=sys.stderr)
-            break
+            print(f"[warn] getonboard query={query!r}: {exc}", file=sys.stderr)
+            continue
+        for item in data.get("data", []):
+            attrs = item.get("attributes", {})
+            title = attrs.get("title", "")
+            link = item.get("links", {}).get("public_url", "")
+            if not link or link in seen or not matches_keywords(title, keywords):
+                continue
+            if not attrs.get("remote"):
+                continue
+            countries = [str(c).lower() for c in (attrs.get("countries") or [])]
+            if countries and not any(c in REMOTE_TERMS for c in countries):
+                continue
+            seen.add(link)
+            low, high = attrs.get("min_salary"), attrs.get("max_salary")
+            published = attrs.get("published_at")
+            posted_date = ""
+            if isinstance(published, (int, float)):
+                posted_date = datetime.fromtimestamp(published, tz=timezone.utc).strftime("%Y-%m-%d")
+            opportunities.append({
+                "title": title,
+                "company": item.get("id", "").rsplit("-", 1)[0],
+                "location": f"Remote ({attrs.get('remote_modality') or 'remote'})",
+                "url": link,
+                "posted_date": posted_date,
+                "source": "getonboard",
+                "salary": f"{low}-{high}" if low and high else "",
+            })
 
     stats["jobs_found"] = len(opportunities)
     return stats, opportunities
@@ -344,35 +425,54 @@ def fetch_remoteok(keywords: list[str]) -> tuple[dict, list[dict]]:
 # ---------------------------------------------------------------------------
 
 def fetch_himalayas(keywords: list[str]) -> tuple[dict, list[dict]]:
-    """Fetch jobs from Himalayas (paginated by offset, up to 200 records)."""
-    stats = {"pages_fetched": 0, "jobs_found": 0}
-    opportunities: list[dict] = []
+    """
+    Search Himalayas with the configured search queries.
 
-    for offset in range(0, 200, 50):
-        url = f"https://himalayas.app/jobs/api?limit=50&offset={offset}"
+    Jobs carry explicit country restrictions; those are kept only when they are
+    empty, global, or match a term from LOCATION_ALLOW.
+    """
+    stats = {"queries": 0, "jobs_found": 0}
+    opportunities: list[dict] = []
+    seen: set[str] = set()
+    open_terms = {"worldwide", "anywhere", "latam", "latin america", "south america", "americas"}
+
+    for query in SEARCH_QUERIES:
+        url = f"https://himalayas.app/jobs/api/search?q={urllib.parse.quote_plus(query)}&limit=50"
         try:
             data = fetch_json(url)
-            jobs = data.get("jobs", [])
-            stats["pages_fetched"] += 1
-            if not jobs:
-                break
-            for job in jobs:
-                title = job.get("title", "")
-                if not matches_keywords(title, keywords):
-                    continue
-                posted = job.get("pubDate", "") or job.get("updatedAt", "")
-                posted_date = posted.split("T")[0] if posted else ""
-                opportunities.append({
-                    "title": title,
-                    "company": job.get("companyName", ""),
-                    "location": job.get("location", ""),
-                    "url": job.get("jobUrl", ""),
-                    "posted_date": posted_date,
-                    "source": "himalayas",
-                })
+            stats["queries"] += 1
         except Exception as exc:
-            print(f"[warn] himalayas offset={offset}: {exc}", file=sys.stderr)
-            break
+            print(f"[warn] himalayas query={query!r}: {exc}", file=sys.stderr)
+            continue
+        for job in data.get("jobs", []):
+            title = job.get("title", "")
+            link = job.get("applicationLink") or job.get("guid", "")
+            if not link or link in seen or not matches_keywords(title, keywords):
+                continue
+            restrictions = [str(r).lower() for r in (job.get("locationRestrictions") or [])]
+            if LOCATION_ALLOW and restrictions:
+                allowed = LOCATION_ALLOW + sorted(open_terms)
+                if not any(any(term in r for term in allowed) for r in restrictions):
+                    continue
+            seen.add(link)
+            low, high, currency = job.get("minSalary"), job.get("maxSalary"), job.get("currency") or ""
+            pub = job.get("pubDate")
+            posted_date = (
+                datetime.fromtimestamp(int(pub), tz=timezone.utc).strftime("%Y-%m-%d") if pub else ""
+            )
+            where = ", ".join(restrictions) if restrictions else "worldwide"
+            opportunities.append({
+                "title": title,
+                "company": job.get("companyName", ""),
+                "location": f"Remote ({where})",
+                "url": link,
+                "posted_date": posted_date,
+                "source": "himalayas",
+                "salary": (
+                    f"{low}-{high} {currency} /{job.get('salaryPeriod', '')}".strip()
+                    if low and high else ""
+                ),
+            })
 
     stats["jobs_found"] = len(opportunities)
     return stats, opportunities
@@ -577,12 +677,40 @@ def main() -> None:
         required=True,
         help="Path to write the JSON output array of discovered opportunities.",
     )
+    parser.add_argument(
+        "--exclude",
+        default="",
+        help="Comma-separated title terms to drop even if a keyword matches (e.g. 'frontend,mobile,qa').",
+    )
+    parser.add_argument(
+        "--location-allow",
+        default="",
+        help="Comma-separated location terms that are acceptable (e.g. 'latam,latin america,brazil').",
+    )
+    parser.add_argument(
+        "--location-block",
+        default="",
+        help="Comma-separated location terms to reject (e.g. 'united states,europe,india'). "
+             "Remote or empty locations that match neither list are kept.",
+    )
+    parser.add_argument(
+        "--search-queries",
+        default="",
+        help="Comma-separated queries for the search-based boards (GetOnBoard, Himalayas). "
+             "Defaults to the first 8 keywords.",
+    )
     args = parser.parse_args()
 
     keywords = parse_keywords(args.keywords)
     if not keywords:
         print("[error] --keywords produced an empty list. Provide at least one keyword.", file=sys.stderr)
         sys.exit(1)
+
+    global EXCLUDE_KEYWORDS, LOCATION_ALLOW, LOCATION_BLOCK, SEARCH_QUERIES
+    EXCLUDE_KEYWORDS = parse_keywords(args.exclude)
+    LOCATION_ALLOW = parse_keywords(args.location_allow)
+    LOCATION_BLOCK = parse_keywords(args.location_block)
+    SEARCH_QUERIES = parse_keywords(args.search_queries) or keywords[:8]
 
     entries = parse_watchlist(args.watchlist_file)
 
@@ -595,6 +723,10 @@ def main() -> None:
     # Lever (watchlist-driven)
     lv_stats, lv_opps = fetch_lever(entries, keywords)
     all_opportunities.extend(lv_opps)
+
+    # Ashby (watchlist-driven)
+    ash_stats, ash_opps = fetch_ashby(entries, keywords)
+    all_opportunities.extend(ash_opps)
 
     # GetOnBoard (paginated public API)
     gob_stats, gob_opps = fetch_getonboard(keywords)
@@ -619,6 +751,10 @@ def main() -> None:
     # Deduplicate by URL
     all_opportunities = deduplicate(all_opportunities)
 
+    # Drop locations the candidate cannot work from
+    total_before_location = len(all_opportunities)
+    all_opportunities = [o for o in all_opportunities if location_ok(o.get("location", ""))]
+
     # Discover new ATS slugs from opportunity URLs
     existing_slugs = {e.slug.lower() for e in entries}
     new_slugs = discover_new_slugs(all_opportunities, existing_slugs)
@@ -635,9 +771,11 @@ def main() -> None:
         "timestamp": timestamp,
         "keywords_used": keywords,
         "total_opportunities": len(all_opportunities),
+        "dropped_by_location": total_before_location - len(all_opportunities),
         "sources": {
             "greenhouse": gh_stats,
             "lever": lv_stats,
+            "ashby": ash_stats,
             "getonboard": gob_stats,
             "remoteok": rok_stats,
             "himalayas": him_stats,
