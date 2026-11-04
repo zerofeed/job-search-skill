@@ -12,7 +12,7 @@
       "name": "job-search",
       "source": "./",
       "description": "Search for job opportunities across LinkedIn, 7+ ATS APIs, and web boards. Configurable scoring dimensions, company watchlist, and multi-language support.",
-      "version": "1.0.0",
+      "version": "1.1.0",
       "author": {
         "name": "zerofeed"
       },

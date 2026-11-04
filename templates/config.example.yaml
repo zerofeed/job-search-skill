@@ -11,54 +11,57 @@ profile:
   seniority: "mid"                     # junior | mid | senior | lead | executive
   location: "United States"            # Preferred location or region
   remote_only: true                    # Only show remote positions
+  min_salary_usd_month: null           # Optional hard floor in USD per month (e.g. 6000). Jobs with no published salary are never dropped for this.
+  location_allow: []                   # Location terms you can work from, e.g. ["latam", "latin america", "brazil", "worldwide"]
+  location_block: []                   # Location terms to reject, e.g. ["united states", "europe", "india"]
   resume_path: ""                      # Optional: path to resume file (PDF, YAML, or MD)
 
 # Output language (en, es, pt, fr, de, etc.)
 language: "en"
 
 # --- Search Keywords ---
-# Add keywords in any language. The script searches job titles containing these.
+# Add keywords in any language. The script matches them against job titles.
 keywords:
   en: ["Software Engineer", "Backend Developer", "Full Stack Developer"]
   # es: ["Ingeniero de Software", "Desarrollador Backend"]
+  exclude: []                          # Title terms to drop even if a keyword matches, e.g. ["frontend", "mobile", "qa"]
 
 # --- Sources ---
 sources:
   # Core sources — always active, no credentials needed
   greenhouse: true
   lever: true
+  ashby: true
   remoteok: true
   getonboard: true
   himalayas: true
   workingnomads: true
   weworkremotely: true
 
-  # LinkedIn — requires browser cookie (optional)
+  # LinkedIn — read through Claude in Chrome using your own logged-in session (no cookie needed).
+  # Requires the Claude in Chrome extension and a LinkedIn account already logged in in that Chrome.
+  # See docs/claude-in-chrome-setup.md.
   linkedin:
     enabled: false
-    cookie: ""    # Paste your li_at cookie value here (see README for instructions)
 
 # --- Company Watchlist ---
 # Direct ATS checks for specific companies you're interested in.
-# ATS type must be "greenhouse" or "lever". Slug is the company identifier in the ATS URL.
+# ATS type must be "greenhouse", "lever" or "ashby". Slug is the company identifier in the ATS URL.
 watchlist:
   # - { company: "Stripe", ats: "greenhouse", slug: "stripe" }
   # - { company: "Figma", ats: "lever", slug: "figma" }
 
 # --- Scoring ---
-# Dimensions and weights for evaluating opportunities against your profile.
-# These are auto-proposed by the wizard based on your profile — customize as needed.
-# Weights are normalized automatically if they don't sum to 100.
+# The scorer judges each opportunity on these criteria and returns a verdict:
+#   APPLY    - meets the hard requirements (location, compensation, role) with no blocker
+#   EVALUATE - promising but something is unknown (e.g. salary not published)
+#   SKIP     - a hard requirement fails
 scoring:
-  dimensions:
-    - { name: "Role fit", weight: 30 }
-    - { name: "Tech stack fit", weight: 30 }
-    - { name: "Company stage fit", weight: 20 }
-    - { name: "Location fit", weight: 20 }
-  thresholds:
-    apply: 70       # >= this score: recommended to APPLY
-    evaluate: 50    # >= this score: worth EVALUATING
-    # Below evaluate threshold: SKIP
+  criteria:
+    - "Role fit"
+    - "Tech stack fit"
+    - "Company stage fit"
+    - "Location fit"
 
 # --- Output ---
 output:
