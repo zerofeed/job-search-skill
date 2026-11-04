@@ -79,5 +79,40 @@ class Dedup(unittest.TestCase):
         self.assertEqual(len(fo.deduplicate(rows)), 2)
 
 
+ROOT = pathlib.Path(__file__).resolve().parents[1]
+
+
+class RepoConsistency(unittest.TestCase):
+    """Guards for the config/skill/template contract that the SKILL.md relies on."""
+
+    CONFIGS = [ROOT / "templates/config.example.yaml", *sorted((ROOT / "templates/presets").glob("*.yaml"))]
+
+    def test_every_config_defaults_to_artifact_output(self):
+        for path in self.CONFIGS:
+            text = path.read_text()
+            self.assertIn('format: "artifact"', text, path.name)
+            self.assertIn('file: "opportunities.md"', text, path.name)
+
+    def test_no_config_stores_a_cookie(self):
+        for path in self.CONFIGS:
+            self.assertNotRegex(path.read_text().lower(), r"cookie:|li_at\s*:", path.name)
+
+    def test_tracker_template_exists_and_has_no_personal_data(self):
+        html = (ROOT / "templates/tracker-artifact.html").read_text()
+        self.assertIn("<title>Job Search Tracker</title>", html)
+        for marker in ("meta/profile", "meta/lastRun", "opportunities"):
+            self.assertIn(marker, html)
+        for verdict in ("APPLY", "EVALUATE", "SKIP"):
+            self.assertIn(verdict, html)
+
+    def test_skill_calls_script_with_flags_the_script_defines(self):
+        skill = (ROOT / "skills/job-search/SKILL.md").read_text()
+        script = SCRIPT.read_text()
+        self.assertNotIn("--config", skill)
+        for flag in ("--keywords", "--exclude", "--location-allow", "--location-block", "--watchlist-file", "--output"):
+            self.assertIn(flag, skill)
+            self.assertIn(f'"{flag}"', script)
+
+
 if __name__ == "__main__":
     unittest.main()

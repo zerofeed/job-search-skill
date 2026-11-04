@@ -12,6 +12,7 @@
 - Himalayas switched to its search endpoint and respects country restrictions.
 
 **Added**
+- `output.format`: `artifact` (default) or `markdown`. The artifact is an interactive tracker (`templates/tracker-artifact.html`) with filters and a status dropdown; the run falls back to markdown when the artifact tools are not available.
 - Ashby source (public posting API).
 - `--exclude`, `--location-allow`, `--location-block` and `--search-queries` flags, and matching config fields.
 - `profile.min_salary_usd_month`, and a `salary` field when a source publishes one.

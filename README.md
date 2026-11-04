@@ -9,7 +9,7 @@ Automated job search across LinkedIn, ATS APIs, and web boards with configurable
 - Location and title filters, so results are roles you can actually be hired for
 - Optional salary floor, and a clear APPLY / EVALUATE / SKIP verdict with a reason
 - Company watchlist for direct ATS monitoring
-- Tracks opportunities with lifecycle management (Pending → Applied → Discarded → Closed)
+- Tracks opportunities in an interactive **artifact** (default) or a markdown file, your choice (`output.format`)
 - Multi-language support (English default, configurable)
 
 ## Requirements
@@ -80,6 +80,10 @@ keywords:
   es: ["Gerente de Ingeniería"]
   exclude: ["frontend", "mobile", "qa"]
 
+# Output: artifact (default) or markdown
+output:
+  format: "artifact"
+
 # Scoring — the scorer returns APPLY / EVALUATE / SKIP with a reason
 scoring:
   criteria: ["Domain fit", "Tech stack fit", "Leadership fit", "Company stage fit"]
@@ -106,7 +110,18 @@ If LinkedIn shows a login or checkpoint page the skill stops and tells you; log 
 
 ## Output
 
-Results are written to `opportunities.md` (configurable). Scratch files go in `.job-search/`. Sections:
+Choose how results are tracked with `output.format` in `job-search.yaml`:
+
+| Format | What you get | Needs |
+|--------|--------------|-------|
+| `artifact` (default) | An interactive tracker page: filter chips (Active, Apply, Evaluate, In progress, Discarded), verdict and salary on each row, a status dropdown (New, Interested, Applied, Interviewing, Discarded) that saves as you change it, and your search profile on top. Private to you. | The `Artifact` and `ArtifactData` tools of claude.ai |
+| `markdown` | A tracking file (`output.file`, default `opportunities.md`) with PENDING / DISCARDED sections. | Nothing |
+
+If `artifact` is selected but the artifact tools are not available, the run uses `markdown` and tells you; your config is not changed. The artifact URL is kept in `.job-search/state.json` (git-ignored). The first run creates it from `templates/tracker-artifact.html`; later runs add new rows and never overwrite status changes you made.
+
+Scratch files (discoveries, watchlist) go in `.job-search/`.
+
+### Markdown layout
 
 | Section | Purpose |
 |---------|---------|
@@ -116,7 +131,7 @@ Results are written to `opportunities.md` (configurable). Scratch files go in `.
 | 💀 CLOSED | Positions that are no longer open |
 | WATCHLIST | Companies being monitored via ATS |
 
-Pending rows use `| Company | Role | Verdict | Salary | Date | Link | Notes |`. The WATCHLIST table header must be `| Company | Domain | Career Page | ATS | Slug | Last checked |`. The skill only writes to the PENDING and DISCARDED sections. You manually move entries between sections as you progress through your job search.
+Pending rows use `| Company | Role | Verdict | Salary | Date | Link | Notes |`. The WATCHLIST table header must be `| Company | Domain | Career Page | ATS | Slug | Last checked |`. The skill only writes to PENDING and DISCARDED; you move entries between sections yourself.
 
 ## License
 

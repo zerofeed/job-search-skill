@@ -62,5 +62,12 @@ scoring:
     - "Leadership fit"
     - "Company stage fit"
 
+# --- Output ---
+# format: artifact | markdown
+#   artifact: an interactive tracker page (a Claude artifact) with filters and a status dropdown. Needs the
+#             Artifact tools of claude.ai; if they are not available the run falls back to markdown.
+#   markdown: a plain tracking file in your working directory (file below).
 output:
-  file: "opportunities.md"
+  format: "artifact"
+  artifact_title: "Job Search Tracker"
+  file: "opportunities.md"    # used when format is markdown, and as the fallback
